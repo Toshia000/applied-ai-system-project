@@ -1,35 +1,50 @@
-# 🎮 Game Glitch Investigator: The Impossible Guesser
+# 🎮 The Impossible Guesser
 
-## 🚨 The Situation
+## Summary
 
-You asked an AI to build a simple "Number Guessing Game" using Streamlit.
-It wrote the code, ran away, and now the game is unplayable. 
+The goal of the game is to guess a number with limited amount of tries
 
-- You can't win.
-- The hints lie to you.
-- The secret number seems to have commitment issues.
+## Architecture Overview
+
+Overview of system_diagram.md
+
+**Components:** the diagram has the player and developer, the Streamlit UI and session state in app.py, and the pure game logic in logic_utils.py. The AI opponent sits inside the logic box, and the pytest suite and the notes files sit alongside.
+
+**Data flow:** one round goes from the player's raw guess through parsing, checking against the secret, and scoring. The AI then picks its own guess and gets only the hint back. Both outcomes feed the race result, and the state is rendered back to the player.
+
+**Human and test checks (dotted lines):**
+- The player checks the hints, and the AI's guess log once the game ends.
+- The developer inspects the secret in the Debug expander.
+- The developer runs pytest against the parsing, hint, AI and race functions.
+- The developer reviews AI-written code and records findings in the notes files.
 
 ## 🛠️ Setup
 
 1. Install dependencies: `pip install -r requirements.txt`
 2. Run the broken app: `python -m streamlit run app.py`
 
-## 🕵️‍♂️ Your Mission
 
-1. **Play the game.** Open the "Developer Debug Info" tab in the app to see the secret number. Try to win.
-2. **Find the State Bug.** Why does the secret number change every time you click "Submit"? Ask ChatGPT: *"How do I keep a variable from resetting in Streamlit when I click a button?"*
-3. **Fix the Logic.** The hints ("Higher/Lower") are wrong. Fix them.
-4. **Refactor & Test.** - Move the logic into `logic_utils.py`.
-   - Run `pytest` in your terminal.
-   - Keep fixing until all tests pass!
+## 🤖 Race the AI
 
-## 📝 Document Your Experience
+An AI opponent now plays the same secret number alongside you. After each of your guesses the AI takes one guess too, seeing only the same "Higher/Lower" hints you do.
 
-- The purpose of the game is to guess the correct number with limited number of attempts.
-- Game had several fixes. Hints suggesting user to go lower or higher were inaccurate. Easier difficulty had less attempts that normal and hard difficulties. Input field was suggesting user to press enter to submit the guess, but when the button was pressed nothing happened.
-- With the help of AI I moved game logic from `app.py` to `logic_utils.py`. I also fixed the game hints, added guess submit on the enter press and increased number of attempts for easy and normal difficulties.
+- **You find it in fewer tries:** you win. **The AI does:** the AI wins. **Same round:** tie. If neither finds it before the attempts run out, nobody wins.
+- **AI levels** (sidebar): *Rookie* guesses randomly inside the range still possible; *Pro* uses binary search and is very hard to beat.
+- The AI's guesses are hidden during the game (they would leak hints about the secret) and revealed once the game ends. A win/loss/tie tally is kept in the sidebar.
+- AI logic lives in `logic_utils.py` (`ai_next_guess`, `narrow_range`, `determine_race_result`) and is covered by tests in `tests/test_game_logic.py`.
 
-## 📸 Demo Walkthrough
+Fixes made along the way so the race is fair: attempts now start at 0 (the limit was off by one), invalid input no longer costs an attempt, and *New Game* fully resets the game (it previously kept the old win/loss status). Changing difficulty or AI level also starts a fresh game.
+
+## 🧭 Design Decisions
+
+- **Logic separate from UI** (`logic_utils.py` vs `app.py`): rules are plain functions, so `pytest` can test them. *Trade-off:* a bit of glue code in the app.
+- **AI plays by the user's rules** (same hints, one guess per round): keeps "fewer tries" fair. *Trade-off:* it's a simple search strategy, not a learned model, so it's predictable.
+- **Two AI levels** (Rookie random, Pro binary search): Rookie is beatable, Pro is nearly unbeatable. *Trade-off:* Pro still only solves Hard (1–50, 5 attempts) about 60% of the time, because of the existing attempt limits.
+- **Synchronized rounds** (you guess, then the AI): makes ties well defined. *Trade-off:* the AI always gets its guess for the round, even if you already won it.
+- **AI guesses hidden until game over:** each one would leak a hint about the secret. *Trade-off:* you can't watch the AI think live.
+- **State in `st.session_state` only:** simplest way to keep the secret stable. *Trade-off:* the win/loss tally resets when the session ends.
+
+## 📸 Sample interactions
 
 Describe your fixed game in numbered steps so a reader can follow along without watching a video:
 
@@ -43,16 +58,66 @@ Describe your fixed game in numbered steps so a reader can follow along without 
 8. User clicks on submit guess button
 9. Game tells the user that the guess is correct
 
-**Screenshot** *(optional)*: <!-- Insert a screenshot of your fixed, winning game here -->
+## Testing Summary
 
-## 🧪 Test Results
+I tested the game manually by trying to beat the AI, lose to AI or to have a tie with AI. AI also created tests that verifies game functionality.
+
+## ✅ Reproducible Execution Evidence
+
+Everything below was generated by running the commands shown, and is saved in full in [test_results.txt](test_results.txt) and [evidence_log.txt](evidence_log.txt). The evidence script drives the **real Streamlit app headlessly** with fixed secrets and a seeded RNG, so you get the same output every time.
+
+### Sample command executions
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests -v > test_results.txt   # unit tests (18)
+python run_evidence.py > evidence_log.txt      # example runs, guardrails, reliability
+python -m streamlit run app.py                 # play the game yourself
+```
+
+Test result (`test_results.txt`, last line): `18 passed in 0.06s`
+
+### Example inputs and outputs
+
+Each run pins the secret, then submits guesses through the app's text box and Submit button. The AI's guess log is shown after the game ends.
+
+| Run | Input | Output |
+|---|---|---|
+| A: user wins | Normal (1–100), secret 42, user guesses `42`, AI = Pro | `You beat the AI! You found 42 in 1 tries and the AI hadn't. Score: 80` |
+| B: AI wins | secret 42, user guesses `1` every round, AI = Pro | `The AI wins! It found 42 in 7 tries, before you did. Score: -35`. AI guess log: `[50, 25, 37, 43, 40, 41, 42]` |
+| C: tie | secret 50, user guesses `50`, AI = Pro (its first guess is 50) | `It's a tie! You and the AI both found 50 in 1 tries.` |
+| D: nobody wins | Hard (1–50, 5 tries), secret 2, user guesses `50` ×5, AI = Pro | `Out of attempts! Nobody found the secret, which was 2. Score: -5` (Pro needs 6 tries for 2) |
+
+### Reliability and guardrail results
+
+Guardrails checked by `run_evidence.py` (all pass):
 
 ```
-# Paste your pytest output here, e.g.:
-# pytest tests/
-# ========================= X passed in 0.XXs =========================
+Input 'abc'    -> error=['That is not a number.'], attempts=0
+Input ''       -> error=['Enter a guess.'], attempts=0
+Input '  '     -> error=['That is not a number.'], attempts=0
+Input '4x2'    -> error=['That is not a number.'], attempts=0
+PASS: invalid input shows an error and does not use an attempt
+PASS: guesses after the game is over are ignored (state unchanged)
+PASS: New Game resets status, attempts and AI history
+PASS: changing difficulty starts a fresh game inside the new range
+PASS: AI guess log is not shown while the game is in progress
 ```
 
-## 🚀 Stretch Features
+AI reliability: each AI level plays every possible secret (200 seeded runs each) at each difficulty.
 
-- [ ] [If you choose to complete Challenge 4, describe the Enhanced UI changes here — a screenshot is optional]
+```
+Difficulty Range    Limit  AI      Found in limit  Avg tries  Max tries
+Easy       1-20     10     Pro     100%            3.70       5
+Easy       1-20     10     Rookie  100%            4.52       12
+Normal     1-100    8      Pro     100%            5.80       7
+Normal     1-100    8      Rookie  65%             7.48       19
+Hard       1-50     5      Pro     62%             4.86       6
+Hard       1-50     5      Rookie  39%             6.20       18
+```
+
+How to read it: Pro never needs more than 7 tries on 1–100, and with unlimited tries both levels always find the secret (no run failed). On Hard, the 5-attempt limit is tighter than binary search needs for 19 of the 50 numbers, so even a perfect AI finds the number only 62% of the time, which is why "nobody wins" can happen there.
+
+## Reflection
+
+This project helped me to collaborate and utilize AI effectively

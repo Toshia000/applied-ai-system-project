@@ -67,3 +67,61 @@ def update_score(current_score: int, outcome: str, attempt_number: int):
         return current_score - 5
 
     return current_score
+
+
+# ---------------------------------------------------------------------------
+# AI opponent
+# ---------------------------------------------------------------------------
+# The AI plays the same game as the user: it sees only the "Too High" /
+# "Too Low" hints (never the secret) and gets one guess per round.
+
+AI_LEVELS = ("Rookie", "Pro")
+
+
+def narrow_range(low: int, high: int, guess: int, outcome: str):
+    """Shrink the (low, high) search window after a guess, based on its hint."""
+    if outcome == "Too Low":
+        return max(low, guess + 1), high
+    if outcome == "Too High":
+        return low, min(high, guess - 1)
+    return low, high
+
+
+def ai_next_guess(low: int, high: int, level: str = "Pro", rng=None):
+    """
+    Pick the AI's next guess from the numbers still possible (low..high).
+
+    - "Pro":    binary search (always the middle), the optimal strategy.
+    - "Rookie": a random number from the remaining window.
+    """
+    if low > high:
+        raise ValueError("Empty search range: low is greater than high.")
+
+    if level == "Pro":
+        return (low + high) // 2
+
+    if rng is None:
+        import random as rng  # the random module has the same randint API
+    return rng.randint(low, high)
+
+
+def determine_race_result(user_solved: bool, ai_solved: bool, attempts: int, attempt_limit: int):
+    """
+    Decide the user-vs-AI race after a full round (both have guessed `attempts` times).
+
+    Returns:
+        "tie"  - both found the number in the same round
+        "user" - only the user found it (fewer tries)
+        "ai"   - only the AI found it (fewer tries)
+        "none" - nobody found it and the attempts ran out
+        None   - race still going
+    """
+    if user_solved and ai_solved:
+        return "tie"
+    if user_solved:
+        return "user"
+    if ai_solved:
+        return "ai"
+    if attempts >= attempt_limit:
+        return "none"
+    return None

@@ -1,0 +1,56 @@
+======================================================================
+SECTION 1: Example runs through the real Streamlit app (headless)
+======================================================================
+
+Start banner: Guess a number between 1 and 100. Your attempts left: 8 · 🤖 AI tries so far: 0
+
+### Run A - user beats the AI
+Input(s):  secret=42, user guesses 42 (try 1), AI=Pro
+Output:    ["You beat the AI! You found 42 in 1 tries and the AI hadn't. Score: 80", 'Correct!']
+State:     status=over, result=user, attempts=1, ai_tries=1
+Check:     user found it in 1 try; AI hadn't -> result 'user'
+
+### Run B - AI beats the user
+Input(s):  secret=42, user guesses 1 every round, AI=Pro
+Output:    ['The AI wins! It found 42 in 7 tries, before you did. Score: -35', 'Go HIGHER!']
+State:     status=over, result=ai, attempts=7, ai_tries=7
+Check:     Pro's guesses 50,25,37,43,40,41,42 -> found on try 7 -> result 'ai'
+AI guess log: [50, 25, 37, 43, 40, 41, 42]
+
+### Run C - tie
+Input(s):  secret=50, user guesses 50 (try 1), AI=Pro guesses 50 (try 1)
+Output:    ["It's a tie! You and the AI both found 50 in 1 tries.", 'Correct!']
+State:     status=over, result=tie, attempts=1, ai_tries=1
+Check:     both found it in the same round -> result 'tie'
+
+### Run D - out of attempts
+Input(s):  Hard (1-50, 5 tries), secret=2, user guesses 50 x5, AI=Pro
+Output:    ['Out of attempts! Nobody found the secret, which was 2. Score: -5', 'Go LOWER!']
+State:     status=over, result=none, attempts=5, ai_tries=5
+Check:     Pro needs 6 tries for 2, the limit is 5 -> nobody finds it -> result 'none'
+
+======================================================================
+SECTION 2: Guardrails (bad input and state resets)
+======================================================================
+Input 'abc'    -> error=['That is not a number.'], attempts=0
+Input ''       -> error=['Enter a guess.'], attempts=0
+Input '  '     -> error=['That is not a number.'], attempts=0
+Input '4x2'    -> error=['That is not a number.'], attempts=0
+PASS: invalid input shows an error and does not use an attempt
+PASS: guesses after the game is over are ignored (state unchanged)
+PASS: New Game resets status, attempts and AI history
+PASS: changing difficulty starts a fresh game inside the new range
+PASS: AI guess log is not shown while the game is in progress
+
+======================================================================
+SECTION 3: Reliability - AI vs every possible secret (seeded, deterministic)
+======================================================================
+Difficulty Range    Limit  AI      Found in limit  Avg tries  Max tries
+Easy       1-20     10     Pro     100%            3.70       5
+Easy       1-20     10     Rookie  100%            4.52       12
+Normal     1-100    8      Pro     100%            5.80       7
+Normal     1-100    8      Rookie  65%             7.48       19
+Hard       1-50     5      Pro     62%             4.86       6
+Hard       1-50     5      Rookie  39%             6.20       18
+
+PASS: with unlimited tries both AI levels found every secret (no run raised).
